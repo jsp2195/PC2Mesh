@@ -1,0 +1,30 @@
+# Everything `main.py prepare` and `main.py train` write. All of it is
+# reproducible from data/stl/ and config.yaml, and none of it is small.
+data/corpus/
+data/clouds/
+data/cache/
+data/*.csv
+data/*.json
+data/*.txt
+runs/
+logs/
+
+# Meshes and clouds are inputs and outputs, never source. The five shipped
+# examples are the one exception.
+*.stl
+*.STL
+*.npy
+*.vtu
+!examples/stl/*.stl
+!examples/clouds/*.npy
+
+# The released checkpoint IS committed (checkpoints/pc2mesh_v3.pt, 24 MB).
+# Checkpoints a training run writes are not: they live under runs/.
+
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+.DS_Store

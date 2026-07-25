@@ -1,0 +1,197 @@
+# pc2mesh — all tunable constants live here. Nothing is hard-coded in the modules.
+# Offline only: no pretrained weights, no network access at any stage.
+#
+# The values are the ones the shipped checkpoint was trained and scored with.
+# Where a value is not the obvious default, the comment says what measurement
+# moved it. The seven `eval.gates` thresholds were fixed BEFORE any result was
+# seen and are never relaxed; tests/test_gates.py fails if one is edited.
+
+seed: 0
+
+paths:
+  # `prepare` writes both of these from the STLs you drop in data/stl/:
+  #   data/corpus/<subdir>/<stem>.stl   normalized mesh (centroid at the origin,
+  #                                     max extent 1.0)
+  #   data/clouds/<subdir>/<stem>.npy   (1000, 6) float64, xyz ++ unit face normal
+  # The subdirectory under data/stl/ is carried through as the shape's "folder"
+  # label, which is what the per-folder gate breakdown groups by.
+  stl_in: data/stl
+  meshes: data/corpus
+  pointclouds: data/clouds
+  mesh_glob: "**/*.stl"
+  pc_glob: "**/*.npy"
+  data: data
+  cache: data/cache
+  runs: runs
+
+# ---------------------------------------------------------------- stage 1: pair_scan
+scan:
+  # Worker count for the multiprocessing pools. Affects wall time only — every
+  # per-shape seed is derived from the job index, not from the worker. Lower it
+  # if you have few cores; nothing about the result changes.
+  workers: 30
+  # (a) FRAME check: point cloud -> mesh surface distance
+  frame_p99_max: 0.02          # a pair with p99 above this is flagged misaligned
+  # STOP gates
+  min_watertight_rate: 0.60
+  max_frame_fail_rate: 0.05
+  # (b) NORMALIZATION check: the corpus must share one frame.
+  # Meshes are normalized to max-extent == 1 centred near the origin, i.e. a
+  # [-0.5, 0.5]-ish box rather than a [-1, 1] box. What matters is that every shape
+  # uses the SAME one, which is what these bounds test.
+  frame_abs_coord_max: 1.0     # no vertex may fall outside [-1, 1]
+  frame_scale_spread_max: 0.02 # (max(ext) - min(ext)) / mean(ext) <= this
+
+# ---------------------------------------------------------------- stage 2: prep_queries
+prep:
+  workers: 30
+  n_queries: 100000
+  # Was 0.5 with sigmas [0.005, 0.02]. Under that split the uniform half was 96.5%
+  # trivially outside (occupancy 0.035 vs 0.459 near-surface), so half of every
+  # batch was spent confirming that empty space is empty. This value is read by
+  # BOTH prep (cache composition) and dataset.sample_batch (batch composition):
+  # rebalancing the cache alone would change nothing while the sampler still drew
+  # the two pools 50/50.
+  near_frac: 0.75              # 75% near-surface, 25% uniform in the padded global bbox
+  near_sigmas: [0.003, 0.01]   # mixed 50/50 within the near-surface fraction
+  bbox_pad: 0.05               # global bbox padded 5%
+  wn_threshold: 0.5            # igl fast winding number -> occupancy
+  val_frac: 0.1                # 90/10 split taken WITHIN each folder
+  # LABELING-ONLY repair budget (never applied to the geometry that is scored)
+  max_hole_fill_passes: 1
+
+# ---------------------------------------------------------------- stage 3: model
+model:
+  n_points: 1000               # encoder input size
+  n_centers: 64                # FPS centres M -> latent tokens
+  # The .npy clouds are (1000,6). With this on, xyz is Fourier encoded and the raw
+  # 3-vector normal is concatenated to those features before the single Linear to
+  # d_model. Absent/false reproduces the pre-normals architecture exactly, so an
+  # older checkpoint still loads (`model_cfg` travels inside the .pt).
+  use_normals: true
+  n_freq: 32                   # Fourier features per axis
+  d_model: 256
+  n_heads: 4
+  n_layers: 6                  # PreLN self-attention blocks in the encoder
+  mlp_ratio: 4
+  # Was 0.1. Val BCE sat BELOW train BCE for the whole baseline run, which is
+  # regularized underfitting, not overfitting -- so the regularizers are what to
+  # spend first.
+  dropout: 0.0
+  fourier_max_freq: 64.0       # log-spaced band: 1 .. fourier_max_freq (cycles/unit)
+
+# ---------------------------------------------------------------- stage 4: train
+train:
+  batch_shapes: 32
+  queries_per_shape: 2048      # split near/uniform by prep.near_frac (0.75/0.25)
+  lr: 1.0e-3
+  weight_decay: 0.01           # was 0.05 — see model.dropout
+  betas: [0.9, 0.99]
+  warmup_steps: 300
+  min_lr: 1.0e-5
+  # The reference GPU is a 115 W laptop part: it runs ~19 steps/s cold and settles
+  # to ~7 steps/s once it reaches 83 C. Sizing the run from throughput measured
+  # during warmup overestimates it by ~2.7x, and the cosine then gets truncated by
+  # the wall clock with the LR still near its peak. So the LR is held at base_lr
+  # from the end of warmup until the probe fires, total_steps is fitted from the
+  # steady-state rate measured over that window, and the cosine runs from there.
+  schedule_probe_step: 2000    # fallback when schedule_probe_seconds is 0
+  # The probe fires on the WALL CLOCK, because a fixed step count only measures
+  # steady state if the card has throttled by then. At dropout 0 the fused
+  # attention path runs ~2x faster cold, so step 2000 arrived at 96 s with the GPU
+  # still cold and the fit overestimated capacity ~2x — the exact failure the
+  # plateau exists to prevent.
+  schedule_probe_seconds: 240
+  schedule_margin: 0.97        # aim slightly under budget so the cosine finishes
+  grad_clip: 1.0
+  log_every: 100               # steps between train/val logs
+  patience_evals: 15           # early stop on val BCE
+  val_batches: 8
+  amp_dtype: bf16
+  num_workers: 8
+  time_budget_min: 60          # total wall-clock target for the full run
+  max_steps: 200000            # hard cap; the time budget normally binds first
+  augment:
+    # Was full random SO(3) (`rotate: true`, kept below only so an older config
+    # still means what it meant). A sweep measured SO(3) costing BCE 0.284 -> 0.377
+    # on an 8-shape probe, and the reference corpus is upright: across 1041 shapes
+    # the x and y extent distributions are the closest pair (KS 0.095, vs 0.13 and
+    # 0.17 against z) and z is the shortest axis on average, so free rotation
+    # trains an invariance the held-out data never exercises. If YOUR corpus is not
+    # upright, set rotate_mode: so3.
+    rotate_mode: yaw_tilt      # none | so3 | yaw_tilt
+    tilt_deg: 15.0             # +/-15 deg off vertical, about a random horizontal axis
+    up_axis: 2                 # z, per the extent-distribution measurement above
+    rotate: true               # legacy fallback, unused while rotate_mode is set
+    scale_aniso: 0.10          # +/-10% per-axis
+    jitter_sigma: 0.003
+    dropout_keep_min: 0.9      # keep 90-100% of points, pad by resampling
+    dropout_keep_max: 1.0
+  smoke:
+    n_shapes: 8
+    steps: 500
+    log_every: 50
+    warmup_steps: 50   # 300 would leave only 200 decaying steps in a 500-step probe
+    # An OVERFIT probe must actually overfit. With full random SO(3) on, 500 steps
+    # asks the model to learn rotation invariance from 8 shapes, which it cannot,
+    # and the probe stops testing what it exists to test (labels, frame, sign
+    # conventions, marching cubes). Measured on 8 shapes at 500 steps:
+    #   augment on  -> BCE 0.377, IoU@128 0.351   (probe underfits, says nothing)
+    #   augment off -> BCE 0.168, IoU@128 0.557   (probe passes on its own merits)
+    # The GATE THRESHOLD below is unchanged; only the probe definition is.
+    augment: false
+    # Pre-registered smoke gate, fixed before the first run and never relaxed:
+    gate_watertight: true
+    gate_iou128: 0.50
+
+# ---------------------------------------------------------------- stage 5: meshify
+meshify:
+  resolution: 128
+  bbox_pad: 0.05               # same padded global bbox as the queries
+  chunk: 200000                # query points decoded per forward pass
+  level: 0.0                   # marching cubes on the logit field
+  shell_logit: -1.0e4          # outer 1-voxel shell forced outside
+  floater_volume_frac: 0.001   # --drop-floaters: drop components < 0.1% of largest
+
+# ---------------------------------------------------------------- stage 5b: remesh
+# A POST-PROCESS on the marching-cubes output, not a training or gate change.
+# Marching cubes at R=128 emits ~36k faces per shape in a layout that follows the
+# grid rather than the surface; this decimates to a fixed budget, scored by the
+# SAME pre-registered gates. Decimation only removes geometry, so a lower IoU or
+# normal consistency is the price of the budget. The number that would be a
+# finding is the revert count, and it was 0 of 584 at every budget tried.
+remesh:
+  target_faces: 8000           # the budget a SWEEP runs at; see `infer` below
+  # HARD INVARIANT: a step is kept only if the mesh is still watertight AND winding
+  # consistent afterwards. Otherwise the shape reverts whole and the stem is logged
+  # here. A broken mesh is never written.
+  reverts_csv: logs/remesh_reverts.csv
+
+# ---------------------------------------------------------------- inference
+# The OPERATING POINT, deliberately separate from the remesh sweep above so that
+# re-pointing the probe cannot silently change what inference emits. 4000 was
+# chosen because it holds IoU@128 to within 0.0001 of the 36,151-face
+# marching-cubes output, reverted on 0 of 584 held-out shapes, and gives both the
+# highest tetrahedralization success rate (0.9880 vs 0.9726 at 8000) and the best
+# minimum dihedral angle (median 1.858 deg vs 0.147 deg at 16,000).
+infer:
+  target_faces: 4000
+
+# ---------------------------------------------------------------- stage 6: eval_gates
+# Pre-registered thresholds. PASS if the metric meets `pass`; PARTIAL if it meets
+# `partial`; FAIL otherwise. These were fixed BEFORE any result was seen and are
+# never relaxed to make a run look better. tests/test_gates.py hard-codes them a
+# second time so a silent edit here fails a test.
+eval:
+  n_eval_shapes: 0             # 0 = all held-out shapes
+  chamfer_samples: 100000
+  normal_samples: 100000
+  iou_resolution: 128
+  gates:
+    watertight_rate: {pass: 0.98, partial: 0.90, direction: higher}
+    winding_consistent_rate: {pass: 0.98, partial: 0.90, direction: higher}
+    self_intersection_free_rate: {pass: 1.00, partial: 0.90, direction: higher}
+    iou128_mean: {pass: 0.90, partial: 0.80, direction: higher}
+    chamfer_l2_x1e3_mean: {pass: 1.00, partial: 2.00, direction: lower}
+    normal_consistency_mean: {pass: 0.90, partial: 0.80, direction: higher}
+    euler_match_rate: {pass: 0.85, partial: 0.70, direction: higher}

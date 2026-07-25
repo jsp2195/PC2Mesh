@@ -1,0 +1,36 @@
+# Pinned to the versions this checkpoint was trained, scored and verified with.
+# Everything runs offline: no weights are downloaded and no network call is made
+# at any stage. `python main.py verify` prints the version it actually imported
+# for each of these, so a drift is visible rather than silent.
+
+# --- torch -------------------------------------------------------------------
+# CUDA is OPTIONAL. A CPU-only build runs the whole pipeline; decoding a 128^3
+# grid is just slower (order a minute per shape instead of a couple of seconds).
+# The build verified here is 2.5.1+cu121. A plain `pip install -r requirements.txt`
+# takes whatever build your index defaults to, which is usually what you want. To
+# pin one explicitly:
+#   CUDA 12.1 : pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+#   CPU only  : pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1
+
+# --- required ----------------------------------------------------------------
+numpy==1.26.4
+scipy==1.12.0
+scikit-image==0.22.0      # marching_cubes on the logit field
+trimesh==4.3.2            # mesh I/O, surface sampling, topology predicates
+open3d==0.18.0            # trimesh.simplify_quadric_decimation wraps it; the
+                          # 4000-face decimation does not run without it
+libigl==2.6.2             # fast generalized winding number -> occupancy labels and IoU
+PyYAML==6.0.1
+tqdm==4.67.3
+
+# --- tetrahedral output ------------------------------------------------------
+# Needed only for `infer --tets` and `python -m pc2mesh.tetrahedralize`. Leave
+# them out and everything else still works; `verify` reports them as optional and
+# `infer --tets` says so and writes no .vtu rather than substituting something
+# that is not a tetrahedral mesh.
+gmsh==4.15.2
+meshio==5.3.5
+
+# --- tests -------------------------------------------------------------------
+pytest==8.2.0
