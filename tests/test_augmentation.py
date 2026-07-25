@@ -50,6 +50,7 @@ warnings.filterwarnings("ignore")
 
 from pc2mesh.common import (  # noqa: E402
     REPO_ROOT, Cfg, load_config, load_mesh, padded_bounds, repair_for_labeling, resolve,
+    stable_seed,
 )
 from pc2mesh.dataset import (  # noqa: E402
     OccData, apply_affine, apply_affine_normals, dropout_and_pad, make_rotations,
@@ -129,7 +130,7 @@ def _queries_for(stem: str, n_queries: int):
 
     gb = _bounds()
     mesh = _mesh_for(stem)
-    rng = np.random.default_rng(abs(hash(stem)) % (1 << 31))
+    rng = np.random.default_rng(stable_seed(stem))
     n_near = int(round(n_queries * float(CFG.prep.near_frac)))
     n_unif = n_queries - n_near
 

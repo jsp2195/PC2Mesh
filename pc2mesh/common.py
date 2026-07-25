@@ -68,6 +68,18 @@ def norm_stem(name: str) -> str:
     return _WS.sub(" ", str(name).strip()).lower()
 
 
+def stable_seed(text: str, mod: int = 1 << 31) -> int:
+    """A per-name seed that is the SAME in every process.
+
+    Python salts `hash()` for str with PYTHONHASHSEED, which is read at
+    interpreter start — so `os.environ["PYTHONHASHSEED"] = ...` inside a running
+    process (as set_seed does) has no effect on it, and `abs(hash(stem))` gives a
+    different number every run. Anything that seeds sampling off a shape's name
+    has to use this instead, or the run is not reproducible and nothing says so.
+    """
+    return int.from_bytes(hashlib.sha1(str(text).encode()).digest()[:8], "big") % mod
+
+
 def sha1_file(path: str | os.PathLike, chunk: int = 1 << 20) -> str:
     h = hashlib.sha1()
     with open(path, "rb") as f:

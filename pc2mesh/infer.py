@@ -54,7 +54,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pc2mesh.common import (  # noqa: E402
-    load_config, load_mesh, padded_bounds, resolve, set_seed,
+    load_config, load_mesh, padded_bounds, resolve, set_seed, stable_seed,
 )
 
 warnings.filterwarnings("ignore")
@@ -244,8 +244,11 @@ def infer_one(path: Path, model, cfg, grid_bounds, train_bounds, out_dirs, args,
             row["src_ext_max"] = float(np.max(raw.extents))
             norm, t, s = normalize_to_training_frame(raw)
             row.update(scale=s, tx=t[0], ty=t[1], tz=t[2])
+            # Seeded from the stem, not from the file's position in the directory:
+            # re-running on a directory with one more file in it must not resample
+            # every other shape. stable_seed, never hash(): see common.stable_seed.
             cloud, n_even, n_topup = sample_cloud(
-                norm, n_points, seed=int(cfg.seed) * 100003 + (abs(hash(stem)) % 100003))
+                norm, n_points, seed=int(cfg.seed) * 100003 + stable_seed(stem, 100003))
             if n_topup:
                 warn.append(f"{n_topup} of {n_points} points topped up from "
                             f"sample_surface (Poisson-disk cull came up short)")
