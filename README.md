@@ -137,6 +137,21 @@ Decimation is what introduces the self-intersections: quadric collapse has no
 global intersection test, so a thin feature can be folded through itself. Every
 affected mesh is still watertight and winding-consistent.
 
+## What it was trained on
+
+**[`docs/DATA_AND_MODEL.md`](docs/DATA_AND_MODEL.md)** is the full data and architecture
+report for this checkpoint, read from the training run's own artifacts: all 22 discovered
+source folders and which four were excluded on measured duplicate overlap, the
+per-folder path from files on disk to cached shapes to train/val (6,050 selected − 209
+rejected = 5,841 cached = 5,257 train + 584 val), the occupancy-label recipe and the
+global bounding box, every architecture hyperparameter read out of the checkpoint's own
+`model_cfg` with the 5,893,889 parameters split 5,053,440 encoder / 840,449 decoder, the
+optimizer and schedule as run, and the shipped inference operating point down to the
+gmsh version.
+
+Anything the artifacts do not record is marked `NOT RECORDED` there rather than
+reconstructed.
+
 ## Limits
 
 **Euler match is PARTIAL (0.7962), and part of that is the ground truth.** Exact
@@ -188,7 +203,7 @@ pc2mesh/infer.py         no ground truth: topology and OOD flags only
 pc2mesh/verify.py        self-check
 checkpoints/             pc2mesh_v3.pt (24 MB), carrying its own training bbox
 examples/                5 STL/cloud pairs spanning the held-out IoU range
-docs/                    figures, with docs/README.md on regenerating them
+docs/                    figures + DATA_AND_MODEL.md; docs/README.md regenerates them
 tests/                   augmentation invariants and gate integrity
 ```
 

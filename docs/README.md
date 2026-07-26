@@ -1,5 +1,9 @@
 # Figures
 
+The other file in this directory is not a figure:
+[`DATA_AND_MODEL.md`](DATA_AND_MODEL.md), the corpus and architecture report for the
+shipped checkpoint, read from the training run's artifacts.
+
 Every figure here was produced from the shipped checkpoint's own run
 (`pc2mesh_v3`, 584 held-out shapes) by the code in this repository. None is a
 diagram; all of them are measurements.
