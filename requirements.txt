@@ -23,6 +23,7 @@ open3d==0.18.0            # trimesh.simplify_quadric_decimation wraps it; the
 libigl==2.6.2             # fast generalized winding number -> occupancy labels and IoU
 PyYAML==6.0.1
 tqdm==4.67.3
+matplotlib==3.8.3         # `main.py figures` only; nothing else imports it
 
 # --- tetrahedral output ------------------------------------------------------
 # Needed only for `infer --tets` and `python -m pc2mesh.tetrahedralize`. Leave

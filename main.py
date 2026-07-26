@@ -4,10 +4,11 @@
     python main.py infer  --in <dir> --out <dir>   clouds or meshes -> surfaces
     python main.py prepare                         data/stl/ -> normalized corpus + cache
     python main.py train                           train on that cache
+    python main.py figures --run runs/<ts>         regenerate that run's figures
 
-`train`, `infer` and `verify` forward their remaining arguments to the module that
-implements them, so `python main.py infer --help` is the real option list.
-`prepare` runs three stages in sequence and has its own small option set, below.
+`train`, `infer`, `verify` and `figures` forward their remaining arguments to the
+module that implements them, so `python main.py infer --help` is the real option
+list. `prepare` runs three stages in sequence and has its own small option set.
 """
 from __future__ import annotations
 
@@ -26,6 +27,13 @@ PASSTHROUGH = {
               "(--tets also fills them with tetrahedra)", "pc2mesh.infer"),
     "verify": ("self-check: environment, gate thresholds, checkpoint, examples, "
                "and one real end-to-end decode", "pc2mesh.verify"),
+    # Reads a run's own logs and meshes and writes into runs/<ts>/figs/. It needs
+    # `train` and then eval_gates to have run, because four of the five figures
+    # score a prediction against its ground truth -- which is exactly what does
+    # not exist at inference. This is the docs/ pipeline, not the infer pipeline.
+    "figures": ("regenerate a run's figures into runs/<ts>/figs/ (needs that run's "
+                "eval_gates output; --ablation adds the resolution comparison)",
+                "pc2mesh.plots"),
 }
 PREPARE_HELP = ("normalize data/stl/ -> data/corpus + data/clouds, audit the pairs, "
                 "then build the query cache and the 90/10 split")

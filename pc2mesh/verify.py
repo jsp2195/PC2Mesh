@@ -243,7 +243,18 @@ def check_decode(c: Checks, cfg, model, train_bounds, device: str, skip: bool) -
     res = int(cfg.meshify.resolution)
 
     t0 = time.time()
-    mesh = meshify_one(model, pc6, cfg, grid, device, drop_floaters=True, resolution=res)
+    try:
+        mesh = meshify_one(model, pc6, cfg, grid, device, drop_floaters=True,
+                           resolution=res)
+    except torch.cuda.OutOfMemoryError as e:
+        # A busy GPU is not a broken clone, and an unhandled traceback here reads
+        # like one. Say which it is, and say the fix.
+        c.fail(f"decode {p.stem} on {device}",
+               f"CUDA out of memory — another process is using the card, or "
+               f"meshify.chunk ({int(cfg.meshify.chunk):,}) is too large for it. "
+               f"Re-run with --device cpu, or lower meshify.chunk. ({e})"
+               .replace("\n", " ")[:400])
+        return
     dt = time.time() - t0
     if not c.check(len(mesh.faces) > 0, f"{p.stem}: marching cubes found a level set",
                    f"{len(mesh.faces)} faces at R={res} in {dt:.1f}s on {device}"):
