@@ -26,7 +26,7 @@ consistency. A broken mesh is never written.
 ![Six held-out shapes: input cloud, prediction, ground truth](docs/qualitative.png)
 
 Six held-out shapes sampled evenly across the IoU ranking, best (0.992) to worst
-(0.263) — the bottom row is the thin plant bowl that `examples/` ships.
+(0.263) — the bottom row is the thin fishing game that `examples/` ships.
 
 ## Install
 
