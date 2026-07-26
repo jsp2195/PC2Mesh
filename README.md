@@ -24,6 +24,7 @@ reverted whole to the undecimated mesh if any step costs watertightness or windi
 consistency. A broken mesh is never written.
 
 ![Six held-out shapes: input cloud, prediction, ground truth](docs/qualitative.png)
+![Six held-out shapes: input cloud, prediction, ground truth](docs/qualitative2.png)
 
 Six held-out shapes sampled evenly across the IoU ranking, best (0.992) to worst
 (0.263) — the bottom row is the thin fishing game that `examples/` ships.
